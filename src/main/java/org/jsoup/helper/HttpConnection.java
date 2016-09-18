@@ -1,6 +1,8 @@
 package org.jsoup.helper;
 
-import org.jsoup.*;
+import org.jsoup.Connection;
+import org.jsoup.HttpStatusException;
+import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
 import org.jsoup.parser.Parser;
 import org.jsoup.parser.TokenQueue;
@@ -13,6 +15,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -43,11 +46,11 @@ public class HttpConnection implements Connection {
         return con;
     }
 
-	private static String encodeUrl(String url) {
-		if(url == null)
-			return null;
-    	return url.replaceAll(" ", "%20");
-	}
+    private static String encodeUrl(String url) {
+        if(url == null)
+            return null;
+        return url.replaceAll(" ", "%20");
+    }
 
     private static String encodeMimeName(String val) {
         if (val == null)
@@ -58,7 +61,7 @@ public class HttpConnection implements Connection {
     private Connection.Request req;
     private Connection.Response res;
 
-	private HttpConnection() {
+    private HttpConnection() {
         req = new Request();
         res = new Response();
     }
@@ -121,9 +124,9 @@ public class HttpConnection implements Connection {
     }
 
     public Connection ignoreHttpErrors(boolean ignoreHttpErrors) {
-		req.ignoreHttpErrors(ignoreHttpErrors);
-		return this;
-	}
+        req.ignoreHttpErrors(ignoreHttpErrors);
+        return this;
+    }
 
     public Connection ignoreContentType(boolean ignoreContentType) {
         req.ignoreContentType(ignoreContentType);
@@ -515,7 +518,7 @@ public class HttpConnection implements Connection {
 
     public static class Response extends HttpConnection.Base<Connection.Response> implements Connection.Response {
         private static final int MAX_REDIRECTS = 20;
-        private static SSLSocketFactory sslSocketFactory;
+        private static TLSSocketFactory sslSocketFactory;
         private static final String LOCATION = "Location";
         private int statusCode;
         private String statusMessage;
@@ -595,7 +598,7 @@ public class HttpConnection implements Connection {
                     return execute(req, res);
                 }
                 if ((status < 200 || status >= 400) && !req.ignoreHttpErrors())
-                        throw new HttpStatusException("HTTP error fetching URL", status, req.url().toString());
+                    throw new HttpStatusException("HTTP error fetching URL", status, req.url().toString());
 
                 // check that we can handle the returned content type; if not, abort before fetching it
                 String contentType = res.contentType();
@@ -689,9 +692,9 @@ public class HttpConnection implements Connection {
         // set up connection defaults, and details from request
         private static HttpURLConnection createConnection(Connection.Request req) throws IOException {
             final HttpURLConnection conn = (HttpURLConnection) (
-                req.proxy() == null ?
-                req.url().openConnection() :
-                req.url().openConnection(req.proxy())
+                    req.proxy() == null ?
+                            req.url().openConnection() :
+                            req.url().openConnection(req.proxy())
             );
 
             conn.setRequestMethod(req.method().name());
@@ -702,6 +705,7 @@ public class HttpConnection implements Connection {
             if (conn instanceof HttpsURLConnection) {
                 if (!req.validateTLSCertificates()) {
                     initUnSecureTSL();
+                    HttpsURLConnection.setDefaultSSLSocketFactory(sslSocketFactory);
                     ((HttpsURLConnection)conn).setSSLSocketFactory(sslSocketFactory);
                     ((HttpsURLConnection)conn).setHostnameVerifier(getInsecureVerifier());
                 }
@@ -758,12 +762,9 @@ public class HttpConnection implements Connection {
                 }};
 
                 // Install the all-trusting trust manager
-                final SSLContext sslContext;
                 try {
-                    sslContext = SSLContext.getInstance("SSL");
-                    sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
                     // Create an ssl socket factory with our all-trusting manager
-                    sslSocketFactory = sslContext.getSocketFactory();
+                    sslSocketFactory = new TLSSocketFactory(null,trustAllCerts,new SecureRandom());
                 } catch (NoSuchAlgorithmException e) {
                     throw new IOException("Can't create unsecure trust manager");
                 } catch (KeyManagementException e) {
@@ -939,11 +940,11 @@ public class HttpConnection implements Connection {
             boolean first = true;
             // reconstitute the query, ready for appends
             url
-                .append(in.getProtocol())
-                .append("://")
-                .append(in.getAuthority()) // includes host, port
-                .append(in.getPath())
-                .append("?");
+                    .append(in.getProtocol())
+                    .append("://")
+                    .append(in.getAuthority()) // includes host, port
+                    .append(in.getPath())
+                    .append("?");
             if (in.getQuery() != null) {
                 url.append(in.getQuery());
                 first = false;
@@ -955,9 +956,9 @@ public class HttpConnection implements Connection {
                 else
                     first = false;
                 url
-                    .append(URLEncoder.encode(keyVal.key(), DataUtil.defaultCharset))
-                    .append('=')
-                    .append(URLEncoder.encode(keyVal.value(), DataUtil.defaultCharset));
+                        .append(URLEncoder.encode(keyVal.key(), DataUtil.defaultCharset))
+                        .append('=')
+                        .append(URLEncoder.encode(keyVal.value(), DataUtil.defaultCharset));
             }
             req.url(new URL(url.toString()));
             req.data().clear(); // moved into url as get params
